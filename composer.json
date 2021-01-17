@@ -1,0 +1,29 @@
+{
+    "name": "devengine/dateparser",
+    "description": "PHP Parser of date strings in any format. Guesses the date format and creates a Carbon instance.",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "devengine",
+            "email": "i@devengine.ru"
+        }
+    ],
+    "require": {
+        "php": "^7.4",
+        "nesbot/carbon": "^2.43"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Devengine\\AnyDateParser\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Devengine\\Tests\\": "tests/"
+        }
+    }
+}
