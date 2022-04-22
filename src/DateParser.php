@@ -44,6 +44,11 @@ class DateParser
         $this->dateChars = mb_str_split($this->dateStr) ?? [];
     }
 
+    public static function new(string $dateStr): self
+    {
+        return new static($dateStr);
+    }
+
     /**
      * Parse an unknown date string format.
      * Raises an exception when an unexpected position found.
@@ -54,6 +59,12 @@ class DateParser
     public function parseStrict(): Carbon
     {
         $this->performDateParse();
+
+        if ($this->preferMonthFirst && is_numeric($this->getMonthStr()) && ! $this->isValidNumericMonth($this->getMonthStr())) {
+            $this->preferMonthFirst = false;
+
+            $this->performDateParse();
+        }
 
         try {
             Carbon::createFromIsoFormat($this->getFormat(), $this->getDateStr());
@@ -77,17 +88,16 @@ class DateParser
     {
         try {
             return $this->parseStrict();
-        } catch (InvalidFormatException | ParseException $e) {
+        } catch (InvalidFormatException|ParseException $e) {
             return null;
         }
 
     }
 
     /**
-     * @return mixed
      * @throws ParseException
      */
-    protected function performDateParse()
+    protected function performDateParse(): void
     {
         $this->dateState = self::DATE_START;
         $this->isoFormat = implode('', $this->dateChars);
@@ -100,7 +110,8 @@ class DateParser
             $this->processDateState($i, $this->dateChars[$i]);
 
             if ($this->dateState === self::DATE_START_OVER) {
-                return $this->performDateParse();
+                $this->performDateParse();
+                return;
             }
         }
 
@@ -855,7 +866,7 @@ class DateParser
 
     private function setFullMonthFormat(): void
     {
-        if (!$this->monthPos === 0) {
+        if ($this->monthPos !== 0) {
             return;
         }
 
@@ -923,6 +934,27 @@ class DateParser
         }
     }
 
+    private function getDayStr(): string
+    {
+        return mb_substr($this->dateStr, $this->dayPos, $this->dayLen);
+    }
+
+    private function getMonthStr(): string
+    {
+        return mb_substr($this->dateStr, $this->monthPos, $this->monthLen);
+    }
+
+    private function getYearStr(): string
+    {
+        return mb_substr($this->dateStr, $this->yearPos, $this->yearLen);
+    }
+
+    private function isValidNumericMonth(string $value): bool
+    {
+        return Carbon::canBeCreatedFromFormat($value, 'm')
+            || Carbon::canBeCreatedFromFormat($value, 'n');
+    }
+
     private function isFullTextualMonth(string $value): bool
     {
         return Carbon::canBeCreatedFromFormat($value, 'F');
@@ -974,4 +1006,19 @@ class DateParser
         DATE_ALPHA_WS_MONTH_MORE = "b4184fde-2664-4ba2-b326-69eeac175272",
         DATE_DIGIT_WS_MONTH_LONG = "e63f1367-8546-4e65-b241-1e1c1d56acc3",
         DATE_DIGIT_WS_MONTH_YEAR = "3044b007-eeab-4693-81fd-c72648fabaac";
+
+    /**
+     * @return bool
+     */
+    public function isMonthPreferredAsFirst(): bool
+    {
+        return $this->preferMonthFirst;
+    }
+
+    public function preferMonthFirst(bool $value = true): self
+    {
+        $this->preferMonthFirst = $value;
+
+        return $this;
+    }
 }

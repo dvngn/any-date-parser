@@ -8,14 +8,35 @@ use PHPUnit\Framework\TestCase;
 
 class DateParseTest extends TestCase
 {
-    public function testConstructs()
+    public function testConstructs(): void
     {
         $dateParser = new DateParser('2021-01-01');
 
         $this->assertInstanceOf(DateParser::class, $dateParser);
+
+        $dateParser = DateParser::new('2021-01-01');
+
+        $this->assertInstanceOf(DateParser::class, $dateParser);
     }
 
-    public function testParsesUnknownDateFormat()
+    public function testCanSetPreferenceOfMonthPosition(): void
+    {
+        $dateParser = DateParser::new('03/04/2014');
+
+        // prefer month set to true by default
+        $this->assertTrue($dateParser->isMonthPreferredAsFirst());
+
+        $this->assertSame(3, $dateParser->parseSilent()->month);
+        $this->assertSame(4, $dateParser->parseSilent()->day);
+
+        $dateParser->preferMonthFirst(false);
+        $this->assertFalse($dateParser->isMonthPreferredAsFirst());
+
+        $this->assertSame(4, $dateParser->parseSilent()->month);
+        $this->assertSame(3, $dateParser->parseSilent()->day);
+    }
+
+    public function testParsesUnknownDateFormat(): void
     {
         $dateStrings = [
             // mm/dd/yy
@@ -45,6 +66,7 @@ class DateParseTest extends TestCase
             "03 February 2013" => "DD MMMM YYYY",
             "1 July 2013" => "D MMMM YYYY",
             "2013-Feb-03" => "YYYY-MMM-DD",
+            "30/04/2025" => "DD/MM/YYYY",
         ];
 
         foreach ($dateStrings as $dateString => $format) {
@@ -52,11 +74,11 @@ class DateParseTest extends TestCase
 
             $dateParser->parseStrict();
 
-            $this->assertEquals($format, $dateParser->getFormat());
+            $this->assertEquals($format, $dateParser->getFormat(), $dateString);
         }
     }
 
-    public function testConstructsCarbonInstance()
+    public function testConstructsCarbonInstance(): void
     {
         $dateStrings = [
             // mm/dd/yy
