@@ -6,6 +6,7 @@ namespace Devengine\AnyDateParser;
 
 use Carbon\Carbon;
 use Carbon\Exceptions\InvalidFormatException;
+use Devengine\AnyDateParser\Enum\DateStateEnum;
 use Devengine\AnyDateParser\Exceptions\ParseException;
 
 class DateParser
@@ -16,7 +17,7 @@ class DateParser
 
     private array $dateChars;
 
-    private string $dateState = self::DATE_START;
+    private DateStateEnum $dateState = DateStateEnum::DateStart;
 
     private bool $preferMonthFirst = true;
 
@@ -60,7 +61,7 @@ class DateParser
     {
         $this->performDateParse();
 
-        if ($this->preferMonthFirst && is_numeric($this->getMonthStr()) && ! $this->isValidNumericMonth($this->getMonthStr())) {
+        if ($this->preferMonthFirst && is_numeric($this->getMonthStr()) && !$this->isValidNumericMonth($this->getMonthStr())) {
             $this->preferMonthFirst = false;
 
             $this->performDateParse();
@@ -99,7 +100,7 @@ class DateParser
      */
     protected function performDateParse(): void
     {
-        $this->dateState = self::DATE_START;
+        $this->dateState = DateStateEnum::DateStart;
         $this->isoFormat = implode('', $this->dateChars);
         $this->yearPos = $this->yearLen = $this->monthPos = $this->monthLen = $this->dayLen = $this->dayPos = 0;
         $charsCount = count($this->dateChars);
@@ -109,7 +110,7 @@ class DateParser
         for (; $i < $charsCount; $i++) {
             $this->processDateState($i, $this->dateChars[$i]);
 
-            if ($this->dateState === self::DATE_START_OVER) {
+            if ($this->dateState === DateStateEnum::DateStartOver) {
                 $this->performDateParse();
                 return;
             }
@@ -122,24 +123,25 @@ class DateParser
         }
 
         switch ($this->dateState) {
-            case self::DATE_YEAR_DASH_ALPHA_DASH:
+            case DateStateEnum::DateYearDashAlphaDash:
                 // 2013-Feb-03
                 // 2013-Feb-3
                 $this->dayLen = $i - $this->dayPos;
                 $this->setDayFormat();
                 break;
 
-            case self::DATE_DIGIT_WS_MONTH_LONG:
+            case DateStateEnum::DateDigitWsMonthLong:
                 // 18 January 2018
                 // 8 January 2018
                 if ($this->dayLen === 2) {
                     $this->isoFormat = 'DD MMMM YYYY';
                     break;
-
                 }
 
                 $this->isoFormat = 'D MMMM YYYY';
 
+                break;
+            default:
                 break;
         }
     }
@@ -156,19 +158,17 @@ class DateParser
      */
     private function processDateState(int &$i, string $char): void
     {
-        switch ($this->dateState) {
-
-            case self::DATE_START:
+        match ($this->dateState) {
+            DateStateEnum::DateStart => (function () use (&$i, $char): void {
                 if (ctype_digit($char)) {
-                    $this->dateState = self::DATE_DIGIT;
+                    $this->dateState = DateStateEnum::DateDigit;
                 } elseif (ctype_alpha($char)) {
-                    $this->dateState = self::DATE_ALPHA;
+                    $this->dateState = DateStateEnum::DateAlpha;
                 } else {
                     throw ParseException::unexpectedDateStartChar();
                 }
-                break;
-
-            case self::DATE_DIGIT:
+            })(),
+            DateStateEnum::DateDigit => (function () use (&$i, $char): void {
                 switch ($char) {
                     case '-':
                     case '\u2212':
@@ -177,19 +177,19 @@ class DateParser
                         // 13-Feb-03
                         // 29-Jun-2016
                         if ($i === 4) {
-                            $this->dateState = self::DATE_YEAR_DASH;
+                            $this->dateState = DateStateEnum::DateYearDash;
                             $this->yearPos = 0;
                             $this->yearLen = $i;
                             $this->monthPos = $i + 1;
                             $this->setYearFormat();
                         } else {
-                            $this->dateState = self::DATE_DIGIT_DASH;
+                            $this->dateState = DateStateEnum::DateDigitDash;
                         }
                         break;
                     case '/':
                         // 03/31/2005
                         // 2014/02/24
-                        $this->dateState = self::DATE_DIGIT_SLASH;
+                        $this->dateState = DateStateEnum::DateDigitSlash;
 
                         if ($i === 4) {
                             $this->yearPos = 0;
@@ -197,8 +197,6 @@ class DateParser
                             $this->monthPos = $i + 1;
                             $this->setYearFormat();
                         } else {
-
-
                             if ($this->preferMonthFirst && $this->monthLen === 0) {
                                 $this->monthLen = $i;
                                 $this->dayPos = $i + 1;
@@ -208,33 +206,30 @@ class DateParser
                                 $this->monthPos = $i + 1;
                                 $this->setDayFormat();
                             }
-
                         }
                         break;
                     case ':':
                         // 03/31/2005
                         // 2014/02/24
-                        $this->dateState = self::DATE_DIGIT_COLON;
+                        $this->dateState = DateStateEnum::DateDigitColon;
 
                         if ($i === 4) {
                             $this->yearLen = $i;
                             $this->monthPos = $i + 1;
                             $this->setYearFormat();
                         } else {
-
                             if ($this->monthLen === 0) {
                                 $this->monthLen = $i;
                                 $this->dayPos = $i + 1;
                                 $this->setMonthFormat();
                             }
-
                         }
                         break;
                     case '.':
                         // 3.31.2014
                         // 08.21.71
                         // 2014.05
-                        $this->dateState = self::DATE_DIGIT_DOT;
+                        $this->dateState = DateStateEnum::DateDigitDot;
 
                         if ($i === 4) {
                             $this->yearLen = $i;
@@ -255,16 +250,14 @@ class DateParser
                         // 02 Jan 2018 23:59:34
                         // 12 Feb 2006, 19:17
                         // 12 Feb 2006, 19:17:22
-                        $this->dateState = self::DATE_DIGIT_WS;
+                        $this->dateState = DateStateEnum::DateDigitWs;
                         $this->dayPos = 0;
                         $this->dayLen = $i;
                         break;
                 }
                 $this->firstPartLen = $i;
-                break;
-
-
-            case self::DATE_DIGIT_WS:
+            })(),
+            DateStateEnum::DateDigitWs => (function () use (&$i, $char): void {
                 // 18 January 2018
                 // 8 January 2018
                 // 8 jan 2018
@@ -282,7 +275,7 @@ class DateParser
 
                         if ($i > $this->dayLen + mb_strlen(' Sep')) {
                             // If len greater than space + 3 it must be full month
-                            $this->dateState = self::DATE_DIGIT_WS_MONTH_LONG;
+                            $this->dateState = DateStateEnum::DateDigitWsMonthLong;
                         } else {
                             // If len=3, the might be Feb or May?  Ie ambiguous abbreviated but
                             // we can parse may with either.  BUT, that means the
@@ -290,14 +283,12 @@ class DateParser
                             $this->monthPos = $this->dayLen + 1;
                             $this->monthLen = $i - $this->monthPos;
                             $this->setMonthFormat();
-                            $this->dateState = self::DATE_DIGIT_WS_MONTH_YEAR;
+                            $this->dateState = DateStateEnum::DateDigitWsMonthYear;
                         }
                         break;
                 }
-
-                break;
-
-            case self::DATE_DIGIT_WS_MONTH_YEAR:
+            })(),
+            DateStateEnum::DateDigitWsMonthYear => (function () use (&$i, $char): void {
                 // 8 jan 2018
                 // 02 Jan 2018 23:59
                 // 02 Jan 2018 23:59:34
@@ -314,9 +305,8 @@ class DateParser
                         $this->setYearFormat();
                         break;
                 }
-                break;
-
-            case self::DATE_YEAR_DASH:
+            })(),
+            DateStateEnum::DateYearDash => (function () use (&$i, $char): void {
                 // dateYearDashDashT
                 //  2006-01-02T15:04:05Z07:00
                 // dateYearDashDashWs
@@ -327,17 +317,16 @@ class DateParser
                     case '-':
                         $this->monthLen = $i - $this->monthPos;
                         $this->dayPos = $i + 1;
-                        $this->dateState = self::DATE_YEAR_DASH_DASH;
+                        $this->dateState = DateStateEnum::DateYearDashDash;
                         $this->setMonthFormat();
                         break;
                     default:
                         if (ctype_alpha($char)) {
-                            $this->dateState = self::DATE_YEAR_DASH_ALPHA_DASH;
+                            $this->dateState = DateStateEnum::DateYearDashAlphaDash;
                         }
                 }
-                break;
-
-            case self::DATE_YEAR_DASH_ALPHA_DASH:
+            })(),
+            DateStateEnum::DateYearDashAlphaDash => (function () use (&$i, $char): void {
                 // 2013-Feb-03
                 switch ($char) {
                     case '-':
@@ -345,9 +334,8 @@ class DateParser
                         $this->dayPos = $i + 1;
                         $this->setMonthFormat();
                 }
-                break;
-
-            case self::DATE_DIGIT_SLASH:
+            })(),
+            DateStateEnum::DateDigitSlash => (function () use (&$i, $char): void {
                 // 2014/07/10 06:55:38.156283
                 // 03/19/2012 10:11:59
                 // 04/2/2014 03:00:37
@@ -357,11 +345,9 @@ class DateParser
                 // 10/13/2014
                 // 01/02/2006
                 // 1/2/06
-
                 switch ($char) {
                     case ' ':
                         throw ParseException::notImplementedCase();
-
                     case '/':
                         if ($this->yearLen > 0) {
                             // 2014/07/10 06:55:38.156283
@@ -371,13 +357,11 @@ class DateParser
                                 $this->setMonthFormat();
                             }
                         } elseif ($this->preferMonthFirst) {
-
                             if ($this->dayLen === 0) {
                                 $this->dayLen = $i - $this->dayPos;
                                 $this->yearPos = $i + 1;
                                 $this->setDayFormat();
                             }
-
                         } else {
                             if ($this->monthLen === 0) {
                                 $this->monthLen = $i - $this->monthPos;
@@ -387,21 +371,18 @@ class DateParser
                         }
                         break;
                 }
-
-                break;
-
-            case self::DATE_DIGIT_DASH:
+            })(),
+            DateStateEnum::DateDigitDash => (function () use (&$i, $char): void {
                 // 13-Feb-03
                 // 29-Jun-2016
                 if (ctype_alpha($char)) {
-                    $this->dateState = self::DATE_DIGIT_DASH_ALPHA;
+                    $this->dateState = DateStateEnum::DateDigitDashAlpha;
                     $this->monthPos = $i;
                 } else {
                     throw ParseException::unexpectedCharPosition($i);
                 }
-                break;
-
-            case self::DATE_DIGIT_DASH_ALPHA_DASH:
+            })(),
+            DateStateEnum::DateDigitDashAlphaDash => (function () use (&$i, $char): void {
                 // 13-Feb-03
                 // 28-Feb-03
                 // 29-Jun-2016
@@ -411,14 +392,12 @@ class DateParser
                         $this->yearPos = $i + 1;
 //                        $this->dateState = self::DATE_DIGIT_DASH_ALPHA_DASH;
                 }
-                break;
-
-            case self::DATE_DIGIT_WS_MONTH_LONG:
+            })(),
+            DateStateEnum::DateDigitWsMonthLong => (function () use (&$i, $char): void {
                 // 18 January 2018
                 // 8 January 2018
-
-                break;
-            case self::DATE_DIGIT_DOT:
+            })(),
+            DateStateEnum::DateDigitDot => (function () use (&$i, $char): void {
                 // This is the 2nd period
                 // 3.31.2014
                 // 08.21.71
@@ -431,21 +410,19 @@ class DateParser
                             $this->dayLen = $i - $this->dayPos;
                             $this->yearPos = $i + 1;
                             $this->setDayFormat();
-                            $this->dateState = self::DATE_DIGIT_DOT_DOT;
+                            $this->dateState = DateStateEnum::DateDigitDotDot;
                         } else {
                             $this->monthLen = $i - $this->monthPos;
                             $this->dayPos = $i + 1;
                             $this->setMonthFormat();
-                            $this->dateState = self::DATE_DIGIT_DOT_DOT;
+                            $this->dateState = DateStateEnum::DateDigitDotDot;
                         }
                         break;
                 }
-                break;
-
-            case self::DATE_DIGIT_DOT_DOT:
-
-                break;
-            case self::DATE_ALPHA:
+            })(),
+            DateStateEnum::DateDigitDotDot => (function () use (&$i, $char): void {
+            })(),
+            DateStateEnum::DateAlpha => (function () use (&$i, $char): void {
                 // dateAlphaWS
                 //  Mon Jan _2 15:04:05 2006
                 //  Mon Jan _2 15:04:05 MST 2006
@@ -475,13 +452,11 @@ class DateParser
                 //   Tue, 11 Jul 2017 16:28:13 +0200 (CEST)
                 //   Mon, 02-Jan-06 15:04:05 MST
                 switch ($char) {
-
                     case ' ':
                         //      X
                         // April 8, 2009
                         if ($i > 3) {
                             // Determine whether it's the alpha name of month or day.
-
                             $possibleMonthUnit = mb_strtolower(mb_substr($this->getDateStr(), 0, $i));
 
                             if ($this->isFullTextualMonth($possibleMonthUnit)) {
@@ -489,14 +464,13 @@ class DateParser
 
                                 // mb_strlen(" 31, 2018")   = 9
                                 if (mb_strlen(mb_substr($this->getDateStr(), $i)) < 10) {
-                                    $this->dateState = self::DATE_ALPHA_WS_MONTH;
+                                    $this->dateState = DateStateEnum::DateAlphaWsMonth;
                                 } else {
-                                    $this->dateState = self::DATE_ALPHA_WS_MORE;
+                                    $this->dateState = DateStateEnum::DateAlphaWsMore;
                                 }
 
                                 $this->dayPos = $i + 1;
                                 break;
-
                             }
                         } else {
                             // dateAlphaWs
@@ -512,65 +486,45 @@ class DateParser
 
                             if ($this->isTextualWeekDay($possibleDayUnit)) {
                                 $this->dateStr = mb_substr($this->dateStr, $i + 1);
-
-                                $this->dateState = self::DATE_START_OVER;
-
+                                $this->dateState = DateStateEnum::DateStartOver;
                                 break;
                             }
-
-                            $this->dateState = self::DATE_ALPHA_WS;
+                            $this->dateState = DateStateEnum::DateAlphaWs;
                         }
-
                         break;
-
                     case ',':
                         // Mon, 02 Jan 2006
                         // $this->monthPos = 0
                         // $this->monthLen = i
                         if ($i === 3) {
-
-                            $this->dateState = self::DATE_WEEKDAY_ABBR_COMMA;
+                            $this->dateState = DateStateEnum::DateWeekdayAbbrComma;
                             $this->monthPos = 0;
-
                             $this->setMonthFormat();
-
                         } else {
-                            $this->dateState = self::DATE_WEEKDAY_COMMA;
+                            $this->dateState = DateStateEnum::DateWeekdayComma;
                             $this->skipPos = $i + 2;
                             $i++;
-
                             // TODO: implement skip pos
                         }
-
                         break;
-
                     case '.':
                         // sept. 28, 2017
                         // jan. 28, 2017
-
-                        $this->dateState = self::DATE_ALPHA_PERIOD_WS_DIGIT;
-
+                        $this->dateState = DateStateEnum::DateAlphaPeriodWsDigit;
                         if ($i === 3) {
                             $this->monthLen = $i;
                             $this->monthPos = 0;
                             $this->setMonthFormat();
                         } elseif ($i === 4) {
                             array_splice($this->dateChars, $i);
-
-                            $this->dateState = self::DATE_START_OVER;
-
+                            $this->dateState = DateStateEnum::DateStartOver;
                         } else {
                             throw ParseException::unexpectedCharPosition($i);
                         }
-
                         break;
-
-
                 }
-
-                break;
-
-            case self::DATE_ALPHA_WS:
+            })(),
+            DateStateEnum::DateAlphaWs => (function () use (&$i, $char): void {
                 // dateAlphaWsAlpha
                 //   Mon Jan _2 15:04:05 2006
                 //   Mon Jan _2 15:04:05 MST 2006
@@ -590,24 +544,18 @@ class DateParser
                     $this->monthLen = 3;
                     $this->dayPos = 0;
                     $this->dayLen = 3;
-
                     $this->setMonthFormat();
                     $this->setDayFormat();
-
-                    $this->dateState = self::DATE_ALPHA_WS_ALPHA;
+                    $this->dateState = DateStateEnum::DateAlphaWsAlpha;
                 } elseif (ctype_digit($char)) {
                     $this->monthPos = 0;
                     $this->monthLen = 3;
                     $this->dayPos = $i;
-
                     $this->setMonthFormat();
-
-                    $this->dateState = self::DATE_ALPHA_WS_DIGIT;
+                    $this->dateState = DateStateEnum::DateAlphaWsDigit;
                 }
-
-                break;
-
-            case self::DATE_ALPHA_WS_MORE:
+            })(),
+            DateStateEnum::DateAlphaWsMore => (function () use (&$i, $char): void {
                 // January 02, 2006, 15:04:05
                 // January 02 2006, 15:04:05
                 // January 2nd, 2006, 15:04:05
@@ -620,7 +568,7 @@ class DateParser
                         if ($this->nextCharIs($i, ' ')) {
                             $this->dayLen = $i - $this->dayPos;
                             $this->yearPos = $i + 2;
-                            $this->dateState = self::DATE_ALPHA_WS_MONTH_MORE;
+                            $this->dateState = DateStateEnum::DateAlphaWsMonthMore;
                             $this->setDayFormat();
                             $i++;
                         }
@@ -631,23 +579,20 @@ class DateParser
                         $this->dayLen = $i - $this->dayPos;
                         $this->yearPos = $i + 1;
                         $this->setDayFormat();
-                        $this->dateState = self::DATE_ALPHA_WS_MONTH_MORE;
+                        $this->dateState = DateStateEnum::DateAlphaWsMonthMore;
                         break;
-
                     case ctype_digit($char):
                         //         XX
                         // January 02, 2006, 15:04:05
                         break;
-
                     case ctype_alpha($char):
                         $this->dayLen = $i - $this->dayPos;
-                        $this->dateState = self::DATE_ALPHA_WS_MONTH_SUFFIX;
+                        $this->dateState = DateStateEnum::DateAlphaWsMonthSuffix;
                         $i--;
                         break;
                 }
-                break;
-
-            case self::DATE_ALPHA_WS_DIGIT:
+            })(),
+            DateStateEnum::DateAlphaWsDigit => (function () use (&$i, $char): void {
                 // May 8, 2009 5:57:51 PM
                 // May 8 2009 5:57:51 PM
                 // oct 1, 1970
@@ -658,23 +603,20 @@ class DateParser
                 // May 08 17:57:51 2009
                 if ($char === ',') {
                     $this->dayLen = $i - $this->dayPos;
-                    $this->dateState = self::DATE_ALPHA_WS_DIGIT_MORE;
-
+                    $this->dateState = DateStateEnum::DateAlphaWsDigitMore;
                     $this->setDayFormat();
                 } elseif ($char === ' ') {
                     $this->dayLen = $i - $this->dayPos;
                     $this->yearPos = $i + 1;
-                    $this->dateState = self::DATE_ALPHA_WS_DIGIT_YEAR_POSSIBLE;
+                    $this->dateState = DateStateEnum::DateAlphaWsDigitYearPossible;
 
                     $this->setDayFormat();
                 } elseif (ctype_alpha($char)) {
-                    $this->dateState = self::DATE_ALPHA_WS_MONTH_SUFFIX;
+                    $this->dateState = DateStateEnum::DateAlphaWsMonthSuffix;
                     $i--;
                 }
-
-                break;
-
-            case self::DATE_ALPHA_WS_DIGIT_MORE:
+            })(),
+            DateStateEnum::DateAlphaWsDigitMore => (function () use (&$i, $char): void {
                 //       x
                 // May 8, 2009 5:57:51 PM
                 // May 05, 2005, 05:05:05
@@ -683,12 +625,10 @@ class DateParser
                 // oct 7, '70
                 if ($char === ' ') {
                     $this->yearPos = $i + 1;
-                    $this->dateState = self::DATE_ALPHA_WS_DIGIT_MORE_WS;
+                    $this->dateState = DateStateEnum::DateAlphaWsDigitMoreWs;
                 }
-
-                break;
-
-            case self::DATE_ALPHA_WS_DIGIT_MORE_WS:
+            })(),
+            DateStateEnum::DateAlphaWsDigitMoreWs => (function () use (&$i, $char): void {
                 //            x
                 // May 8, 2009 5:57:51 PM
                 // May 05, 2005, 05:05:05
@@ -706,13 +646,11 @@ class DateParser
                         // May 8, 2009, 5:57:51 PM
                         $this->yearLen = $i - $this->yearPos;
                         $this->setYearFormat();
-                        $this->dateState = self::DATE_ALPHA_WS_DIGIT_MORE_WS_YEAR;
+                        $this->dateState = DateStateEnum::DateAlphaWsDigitMoreWsYear;
                         break;
-
                 }
-                break;
-
-            case self::DATE_ALPHA_WS_MONTH:
+            })(),
+            DateStateEnum::DateAlphaWsMonth => (function () use (&$i, $char): void {
                 // April 8, 2009
                 // April 8 2009
                 switch ($char) {
@@ -736,7 +674,7 @@ class DateParser
                     case 'n':
                     case 'N':
                         // st, rd, nd, st
-                        $this->dateState = self::DATE_ALPHA_WS_MONTH_SUFFIX;
+                        $this->dateState = DateStateEnum::DateAlphaWsMonthSuffix;
                         $i--;
                         break;
                     default:
@@ -744,30 +682,24 @@ class DateParser
                             $this->yearPos = $i;
                         }
                 }
-
-                break;
-
-
-            case self::DATE_ALPHA_PERIOD_WS_DIGIT:
+            })(),
+            DateStateEnum::DateAlphaPeriodWsDigit => (function () use (&$i, $char): void {
                 //    oct. 7, '70
                 switch (true) {
                     case $char === ' ':
                         break;
                     case ctype_digit($char):
-                        $this->dateState = self::DATE_ALPHA_WS_DIGIT;
+                        $this->dateState = DateStateEnum::DateAlphaWsDigit;
                         $this->dayPos = $i;
                         break;
                     default:
                         throw ParseException::unexpectedCharPosition($i);
                 }
-
-                break;
-
-            case self::DATE_ALPHA_WS_MONTH_SUFFIX:
+            })(),
+            DateStateEnum::DateAlphaWsMonthSuffix => (function () use (&$i, $char): void {
                 //        x
                 // April 8th, 2009
                 // April 8th 2009
-
                 switch ($char) {
                     case 't':
                     case 'T':
@@ -775,7 +707,7 @@ class DateParser
                             if (count($this->dateChars) > $i + 2) {
                                 array_splice($this->dateChars, $i, 2);
 
-                                $this->dateState = self::DATE_START_OVER;
+                                $this->dateState = DateStateEnum::DateStartOver;
                             }
                         }
                         break;
@@ -787,7 +719,7 @@ class DateParser
                             if (count($this->dateChars) > $i + 2) {
                                 array_splice($this->dateChars, $i, 2);
 
-                                $this->dateState = self::DATE_START_OVER;
+                                $this->dateState = DateStateEnum::DateStartOver;
                             }
                         }
                         break;
@@ -797,16 +729,14 @@ class DateParser
                             if (count($this->dateChars) > $i + 2) {
                                 array_splice($this->dateChars, $i, 2);
 
-                                $this->dateState = self::DATE_START_OVER;
+                                $this->dateState = DateStateEnum::DateStartOver;
                             }
                         }
                         break;
                 }
-
-                break;
-        }
-
-
+            })(),
+            default => null
+        };
     }
 
     private function nextCharIs(int $pos, string $char): bool
@@ -817,51 +747,25 @@ class DateParser
     /**
      * @throws ParseException
      */
-    private function setDayFormat()
+    private function setDayFormat(): void
     {
-        if ($this->dayLen === 2) {
-            $this->setFormat($this->dayPos, 'DD');
-            return;
+        if (!in_array($this->dayLen, [1, 2], true)) {
+            throw ParseException::unexpectedDateUnitLength('day', $this->dayLen);
         }
 
-        if ($this->dayLen === 1) {
-            $this->setFormat($this->dayPos, 'D');
-            return;
-        }
-
-        throw ParseException::unexpectedDateUnitLength('day', $this->dayLen);
+        $this->setFormat($this->dayPos, str_repeat('D', $this->dayLen));
     }
 
     /**
      * @throws ParseException
      */
-    private function setMonthFormat()
+    private function setMonthFormat(): void
     {
-        if ($this->monthLen === 4) {
-            $this->setFormat($this->monthPos, 'MMMM');
-
-            return;
+        if ($this->monthLen < 1 || $this->monthLen > 4) {
+            throw ParseException::unexpectedDateUnitLength('month', $this->monthLen);
         }
 
-        if ($this->monthLen === 3) {
-            $this->setFormat($this->monthPos, 'MMM');
-
-            return;
-        }
-
-        if ($this->monthLen === 2) {
-            $this->setFormat($this->monthPos, 'MM');
-
-            return;
-        }
-
-        if ($this->monthLen === 1) {
-            $this->setFormat($this->monthPos, 'M');
-
-            return;
-        }
-
-        throw ParseException::unexpectedDateUnitLength('month', $this->monthLen);
+        $this->setFormat($this->monthPos, str_repeat('M', $this->monthLen));
     }
 
     private function setFullMonthFormat(): void
@@ -877,21 +781,13 @@ class DateParser
     /**
      * @throws ParseException
      */
-    private function setYearFormat()
+    private function setYearFormat(): void
     {
-        if ($this->yearLen === 2) {
-            $this->setFormat($this->yearPos, 'YY');
-
-            return;
+        if (!in_array($this->yearLen, [2, 4], true)) {
+            throw ParseException::unexpectedDateUnitLength('year', $this->yearLen);
         }
 
-        if ($this->yearLen === 4) {
-            $this->setFormat($this->yearPos, 'YYYY');
-
-            return;
-        }
-
-        throw ParseException::unexpectedDateUnitLength('year', $this->yearLen);
+        $this->setFormat($this->yearPos, str_repeat('Y', $this->yearLen));
     }
 
     private function setFormat(int $pos, string $unit): void
@@ -972,40 +868,6 @@ class DateParser
     {
         return implode('', $this->dateChars);
     }
-
-    private const
-        DATE_START_OVER = "9d88a1fd-77e1-48dc-a607-da5821fa4c44",
-        DATE_START = "8b9e4038-9648-4fe7-b38b-a79730aa2fab",
-        DATE_ALPHA = "5842206e-7bd4-41f0-9216-baa0c4d6280d",
-        DATE_DIGIT = "973382e5-0398-4249-9978-da6b9eb1145c",
-        DATE_YEAR_DASH = "85a3c3ed-0e59-448a-bcee-99628b2a8a25",
-        DATE_DIGIT_DASH = "18dbe092-e384-4414-8d13-7ab9548dcc54",
-        DATE_DIGIT_SLASH = "a3b3b48c-ab6a-4bbb-b6d7-54b7094b8f67",
-        DATE_DIGIT_COLON = "81a9bdd0-de3d-4034-962d-41ec62dfeb86",
-        DATE_DIGIT_DOT = "8223ef2d-34b9-4dd8-a83e-ecb9f3dfad4c",
-        DATE_DIGIT_WS = "ff6a857e-ea41-49a1-bb46-28f3a80d407e",
-        DATE_YEAR_DASH_DASH = "69930bb8-7bc8-4727-8797-1abf10c4dca6",
-        DATE_DIGIT_DASH_ALPHA = "3b3f0329-a548-414d-9d98-7b89a9c2da6e",
-        DATE_YEAR_DASH_ALPHA_DASH = "184c2d33-979f-42e2-8dc1-0c5b0b14dcf1",
-        DATE_DIGIT_DASH_ALPHA_DASH = "ad87987d-4a79-4ece-b900-6b5c8b284412",
-        DATE_YEAR_DASH_DASH_WS = "407b7fd7-4285-40c8-a829-619b3c49d56a",
-        DATE_DIGIT_DOT_DOT = "19b9614c-9025-4444-a81d-44fb6b0d3e88",
-        DATE_ALPHA_WS = "cf9f4c89-46f4-4716-a7e4-9b9e58cccde4",
-        DATE_ALPHA_WS_MONTH = "a598220b-0447-43a6-9f86-26597387350a",
-        DATE_ALPHA_WS_MORE = "dabbe4af-da3a-497d-a0a8-e9388bae8b7e",
-        DATE_WEEKDAY_ABBR_COMMA = "754462df-2b0d-4f75-979e-ec8846f21828",
-        DATE_WEEKDAY_COMMA = "e10a30a0-bf88-4a1e-b16f-19b01940b3df",
-        DATE_ALPHA_PERIOD_WS_DIGIT = "1aa263c9-229c-48a4-a45d-c0ad436e877c",
-        DATE_ALPHA_WS_ALPHA = "00519364-acc1-44ac-a924-83a469cf0aa7",
-        DATE_ALPHA_WS_DIGIT = "91337c68-6ae1-432f-8fb9-f84be30d6825",
-        DATE_ALPHA_WS_DIGIT_MORE = "dbc6ee99-14e1-4fec-a2ce-7d3969bb2431",
-        DATE_ALPHA_WS_DIGIT_YEAR_POSSIBLE = "31bf5453-e437-4bba-bfb9-7f9f2ae2cdd3",
-        DATE_ALPHA_WS_MONTH_SUFFIX = "4b29c47b-99a3-43b5-9cb6-d9e43aeb0234",
-        DATE_ALPHA_WS_DIGIT_MORE_WS = "3fa62338-5de7-4827-833b-6c0e9b158014",
-        DATE_ALPHA_WS_DIGIT_MORE_WS_YEAR = "54386979-5e8c-4e18-8d9a-bf483a1a4180",
-        DATE_ALPHA_WS_MONTH_MORE = "b4184fde-2664-4ba2-b326-69eeac175272",
-        DATE_DIGIT_WS_MONTH_LONG = "e63f1367-8546-4e65-b241-1e1c1d56acc3",
-        DATE_DIGIT_WS_MONTH_YEAR = "3044b007-eeab-4693-81fd-c72648fabaac";
 
     /**
      * @return bool
